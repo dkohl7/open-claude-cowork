@@ -1,8 +1,18 @@
 # Maple
 
-Maple is a private chat coach on Jessica's phone. It helps her let go of things at her own pace, with kindness and no pressure. It runs on the Mac mini at home. Her chats are saved only on that Mac.
+Maple is Jessica's decluttering partner, a private app on her phone. She snaps photos of a room, and Maple walks through what's in it, finds a purpose for each item, sets goals and challenges with deadlines, and keeps score. It runs on the Mac mini at home. Her chats are saved only on that Mac.
 
-Maple is a supportive coach, not a therapist. It points to real help (iocdf.org, "Buried in Treasures" groups) and to the 988 crisis line if ever needed.
+## How it works
+
+- **Photo walkthroughs.** Up to 4 photos at a time. Maple names the main items and gives each a spot on her purpose ladder: repurpose, give to a person, sell, donate (Good Samaritan church or Wheeler Mission first), recycle, then trash as a last resort.
+- **Every step has a clock.** If an item misses its deadline, it drops one rung. This keeps "finding the perfect purpose" from stalling.
+- **Areas and goals.** Each room or zone gets a clutter score (1 clear, 9 packed), a target, and a due date.
+- **Challenges and points.** Short, timed challenges. Points for items out the door, challenges met (bonus for early), and finished areas. Levels from Seedling to Forest.
+- **Accountability.** Her next deadline shows at the top of the app. Maple opens each conversation with what's due or overdue, and every working conversation ends with a commitment.
+- **Keeping it clear.** Maple watches what comes into the house, suggests a 24-hour pause before taking free items, and sets a simple rule to protect each finished area.
+- **The board** (🏆 button) shows points, this week's numbers, challenges (tap Done, Partly, or Missed), and area progress.
+
+Maple is a coach, not a therapist. It points to real help (iocdf.org, "Buried in Treasures" groups) and to the 988 crisis line if ever needed.
 
 ## What it costs
 

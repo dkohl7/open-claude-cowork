@@ -72,6 +72,7 @@
     }
     header h1 { font-size: 1.2em; margin: 0; }
     header p { margin: 0; font-size: 0.8em; color: var(--muted); }
+    header p.late { color: var(--accent); font-weight: 600; }
     .header-actions { display: flex; gap: 4px; align-items: center; }
     button {
       font: inherit;
@@ -262,16 +263,45 @@
       transition: opacity 0.2s;
     }
     .toast.show { opacity: 1; }
+    .action {
+      align-self: flex-start;
+      background: var(--accent-soft);
+      color: var(--ink);
+      border-radius: 12px;
+      padding: 6px 12px;
+      font-size: 0.85em;
+      margin-top: -4px;
+    }
+    .thumbs { display: flex; gap: 6px; flex: 1; overflow-x: auto; }
+    .msg .shots { display: grid; grid-template-columns: repeat(2, 1fr); gap: 4px; margin-bottom: 6px; }
+    .msg .shots img { margin: 0; aspect-ratio: 1; object-fit: cover; width: 100%; }
+    #boardDialog { max-height: 86dvh; overflow-y: auto; }
+    .board h4 { margin: 18px 0 8px; font-size: 0.95em; }
+    .level { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+    .level strong { font-size: 1.4em; }
+    .bar { height: 10px; background: var(--bg); border: 1px solid var(--line); border-radius: 999px; overflow: hidden; margin-top: 6px; }
+    .bar span { display: block; height: 100%; background: var(--accent); border-radius: 999px; }
+    .card { border: 1px solid var(--line); border-radius: 14px; padding: 10px 12px; margin-bottom: 8px; background: var(--bg); }
+    .card .meta { color: var(--muted); font-size: 0.85em; }
+    .card .late { color: var(--accent); font-weight: 600; }
+    .card-actions { display: flex; gap: 6px; margin-top: 6px; flex-wrap: wrap; }
+    .card-actions button { background: var(--panel); border: 1px solid var(--line); color: var(--ink); padding: 0 12px; font-size: 0.85em; }
+    .card-actions .primary { border: 0; background: var(--accent); color: var(--on-accent); }
+    .stats { display: flex; gap: 8px; }
+    .stat { flex: 1; text-align: center; border: 1px solid var(--line); border-radius: 14px; padding: 8px; background: var(--bg); }
+    .stat b { display: block; font-size: 1.3em; }
+    .stat span { color: var(--muted); font-size: 0.8em; }
+    .empty { color: var(--muted); font-size: 0.9em; margin: 0; }
   </style>
 </head>
 <body>
   <header>
     <div>
       <h1>Maple</h1>
-      <p>At your pace</p>
+      <p id="nextUp">Let's clear some space</p>
     </div>
     <div class="header-actions">
-      <button class="pill" id="winsBtn" aria-haspopup="dialog">🌱 Wins</button>
+      <button class="pill" id="winsBtn" aria-haspopup="dialog">🏆 Board</button>
       <button class="ghost" id="newBtn" aria-haspopup="dialog">Fresh start</button>
     </div>
   </header>
@@ -286,13 +316,12 @@
 
   <footer>
     <div class="preview" id="preview">
-      <img id="previewImg" alt="Photo you are about to send">
-      <span>Photo ready. Photos are not saved in the app.</span>
+      <div class="thumbs" id="thumbs"></div>
       <button class="ghost" id="removePhoto">Remove</button>
     </div>
     <div class="composer">
       <button class="icon-btn" id="photoBtn" aria-label="Add a photo">📷</button>
-      <input type="file" id="photoInput" accept="image/*" hidden>
+      <input type="file" id="photoInput" accept="image/*" multiple hidden>
       <label for="input" class="sr-only">Message to Maple</label>
       <textarea id="input" rows="1" placeholder="Talk to Maple..." enterkeyhint="send"></textarea>
       <button class="icon-btn send" id="sendBtn" aria-label="Send">➤</button>
@@ -302,27 +331,46 @@
   <div class="toast" id="toast" role="status"></div>
 
   <dialog id="winDialog" aria-labelledby="winTitle">
-    <h3 id="winTitle">Your wins 🌱</h3>
-    <p>Big or small, it all counts. Hard choices count too.</p>
-    <div class="quick-wins">
-      <button data-win="Let go of something">Let go of something</button>
-      <button data-win="Dropped off a donation">Dropped off a donation</button>
-      <button data-win="Made a hard decision">Made a hard decision</button>
-      <button data-win="Did a 15-minute session">Did 15 minutes</button>
-      <button data-win="Passed on bringing something home">Passed on something new</button>
-    </div>
-    <label for="winText" class="sr-only">Describe your win</label>
-    <input id="winText" placeholder="Or say it in your own words">
-    <ul class="wins-list" id="winsList"></ul>
-    <div class="dialog-actions">
-      <button class="ghost" id="winCancel">Close</button>
-      <button class="primary" id="winSave">Save</button>
+    <div class="board">
+      <div class="level">
+        <h3 id="winTitle">🏆 <span id="levelName">Seedling</span></h3>
+        <strong id="points">0</strong>
+      </div>
+      <div class="bar" aria-hidden="true"><span id="levelBar" style="width:0"></span></div>
+      <p id="levelNext"></p>
+
+      <h4>This week</h4>
+      <div class="stats">
+        <div class="stat"><b id="statOut">0</b><span>items out</span></div>
+        <div class="stat"><b id="statMet">0</b><span>met</span></div>
+        <div class="stat"><b id="statIn">0</b><span>came in</span></div>
+      </div>
+
+      <h4>Challenges</h4>
+      <div id="challengeList"></div>
+
+      <h4>Areas</h4>
+      <div id="areaList"></div>
+
+      <h4>Log a quick win</h4>
+      <div class="quick-wins">
+        <button data-win="Made a tough call">Made a tough call</button>
+        <button data-win="Loaded the car">Loaded the car</button>
+        <button data-win="Finished a sprint">Finished a sprint</button>
+        <button data-win="Passed on bringing something home">Passed on something new</button>
+      </div>
+      <label for="winText" class="sr-only">Describe your win</label>
+      <input id="winText" placeholder="Or say it in your own words">
+      <div class="dialog-actions">
+        <button class="ghost" id="winCancel">Close</button>
+        <button class="primary" id="winSave">Save win</button>
+      </div>
     </div>
   </dialog>
 
   <dialog id="newDialog" aria-labelledby="newTitle">
     <h3 id="newTitle">Start fresh?</h3>
-    <p>This clears the screen for a new conversation. Your wins stay, and the old chat is tucked away on the computer, not deleted.</p>
+    <p>This clears the screen for a new conversation. Your board, points, and challenges stay, and the old chat is tucked away on the computer, not deleted.</p>
     <div class="dialog-actions">
       <button class="ghost" id="newCancel">Not now</button>
       <button class="primary" id="newConfirm">Start fresh</button>
@@ -348,7 +396,6 @@
     const sendBtn = document.getElementById('sendBtn');
     const photoInput = document.getElementById('photoInput');
     const preview = document.getElementById('preview');
-    const previewImg = document.getElementById('previewImg');
     const winsBtn = document.getElementById('winsBtn');
     const winDialog = document.getElementById('winDialog');
     const newDialog = document.getElementById('newDialog');
@@ -356,17 +403,20 @@
     const announcer = document.getElementById('announcer');
     const toastEl = document.getElementById('toast');
 
-    const TIMER_STARTER = "Let's do a 15-minute session";
+    const PHOTO_STARTER = '📸 Walk me through a room';
+    const TIMER_STARTER = '⏱ Start a 30-minute sprint';
+    const SPRINT_MINUTES = 30;
+    const MAX_PHOTOS = 4;
     const STARTERS = [
+      PHOTO_STARTER,
       TIMER_STARTER,
-      "I'm stuck on one item",
-      "Help me plan a donation run",
-      "I'm feeling overwhelmed today",
-      "I just want to talk"
+      "🎯 What's due? Check me in",
+      '🚗 Plan a drop-off run',
+      "🤔 I'm stuck on one item"
     ];
 
-    let pendingImage = null;
-    let wins = [];
+    let pendingImages = [];
+    let progress = null;
     let busy = false;
     let triedPasscode = false;
 
@@ -431,15 +481,20 @@
       who.className = 'sr-only';
       who.textContent = role === 'user' ? 'You said: ' : 'Maple said: ';
       el.appendChild(who);
-      if (opts.imageUrl) {
-        const img = document.createElement('img');
-        img.src = opts.imageUrl;
-        img.alt = 'Photo you shared';
-        el.appendChild(img);
+      if (opts.imageUrls?.length) {
+        const shots = document.createElement('div');
+        if (opts.imageUrls.length > 1) shots.className = 'shots';
+        for (const url of opts.imageUrls) {
+          const img = document.createElement('img');
+          img.src = url;
+          img.alt = 'Photo you shared';
+          shots.appendChild(img);
+        }
+        el.appendChild(shots);
       } else if (opts.hadPhoto) {
         const note = document.createElement('div');
         note.className = 'photo-note';
-        note.textContent = '📷 Photo shared';
+        note.textContent = opts.photos > 1 ? `📷 ${opts.photos} photos shared` : '📷 Photo shared';
         el.appendChild(note);
       }
       const body = document.createElement('div');
@@ -448,6 +503,14 @@
       chat.appendChild(el);
       scrollDown(true);
       return body;
+    }
+
+    function addAction(text) {
+      const el = document.createElement('div');
+      el.className = 'action';
+      el.textContent = text;
+      chat.appendChild(el);
+      scrollDown();
     }
 
     function showNotice(html, onRetry) {
@@ -470,8 +533,8 @@
       chat.innerHTML = `
         <div class="welcome">
           <h2>Hi Jessica 👋</h2>
-          <div>This is your space. Maple never reports back to anyone.<br>
-          There is no wrong way to start. Pick one, or just type.</div>
+          <div>Snap any spot in the house and we'll find a purpose for everything in it.<br>
+          Fast, fun, and on the clock. Pick one, or just type.</div>
           <div class="starters"></div>
         </div>`;
       const box = chat.querySelector('.starters');
@@ -479,20 +542,105 @@
         const b = document.createElement('button');
         b.className = 'starter';
         b.textContent = s;
-        b.onclick = () => { input.value = s; send(); };
+        b.onclick = () => {
+          if (s === PHOTO_STARTER) {
+            input.value = "Here's a room. Walk me through it.";
+            return photoInput.click();
+          }
+          input.value = s.replace(/^\S+\s/, '');
+          send();
+        };
         box.appendChild(b);
       }
     }
 
-    function renderWins() {
-      winsBtn.textContent = wins.length ? `🌱 ${wins.length}` : '🌱 Wins';
-      winsBtn.setAttribute('aria-label', wins.length ? `Wins: ${wins.length} so far` : 'Wins');
-      const list = document.getElementById('winsList');
+    const DAY = 24 * 60 * 60 * 1000;
+    function dueText(iso) {
+      const ms = new Date(iso) - Date.now();
+      const abs = Math.abs(ms);
+      const span = abs < 60 * 60 * 1000 ? `${Math.max(1, Math.round(abs / 60000))} min`
+        : abs < DAY ? `${Math.round(abs / 3600000)}h` : `${Math.round(abs / DAY)}d`;
+      return ms < 0 ? `overdue ${span}` : `${span} left`;
+    }
+
+    function el(tag, className, text) {
+      const node = document.createElement(tag);
+      if (className) node.className = className;
+      if (text != null) node.textContent = text;
+      return node;
+    }
+
+    function renderBoard() {
+      if (!progress) return;
+      const p = progress;
+      winsBtn.textContent = `🏆 ${p.points}`;
+      winsBtn.setAttribute('aria-label', `Progress board: ${p.points} points, level ${p.level}`);
+      document.getElementById('levelName').textContent = p.level;
+      document.getElementById('points').textContent = `${p.points} pts`;
+      const base = [0, 100, 300, 700, 1500, 3000, 6000].filter((n) => n <= p.points).pop();
+      document.getElementById('levelBar').style.width = p.next ? `${Math.round(((p.points - base) / (p.next.at - base)) * 100)}%` : '100%';
+      document.getElementById('levelNext').textContent = p.next ? `${p.next.at - p.points} points to ${p.next.name}` : 'Top level. Legend.';
+      document.getElementById('statOut').textContent = p.week.outTotal;
+      document.getElementById('statIn').textContent = p.week.inTotal;
+      document.getElementById('statMet').textContent = p.challenges.filter((c) => c.status === 'met' && Date.now() - new Date(c.resolvedAt) < 7 * DAY).length;
+
+      const open = p.challenges.filter((c) => c.status === 'active').sort((a, b) => new Date(a.due) - new Date(b.due));
+      const nextUp = document.getElementById('nextUp');
+      nextUp.textContent = open.length ? `🎯 ${open[0].title} · ${dueText(open[0].due)}` : "Let's clear some space";
+      nextUp.classList.toggle('late', open.length > 0 && new Date(open[0].due) < Date.now());
+
+      const list = document.getElementById('challengeList');
       list.innerHTML = '';
-      for (const w of wins.slice(-8).reverse()) {
-        const li = document.createElement('li');
-        li.textContent = `${new Date(w.at).toLocaleDateString()}: ${w.text}`;
-        list.appendChild(li);
+      if (!p.challenges.length) list.appendChild(el('p', 'empty', 'No challenges yet. Ask Maple for one.'));
+      for (const c of p.challenges) {
+        const card = el('div', 'card');
+        card.appendChild(el('div', null, c.title));
+        const late = c.status === 'active' && new Date(c.due) < Date.now();
+        const status = c.status === 'active' ? dueText(c.due) : { met: '🏆 met', partial: '◐ partly done', missed: '↺ missed' }[c.status];
+        card.appendChild(el('div', late ? 'meta late' : 'meta', `${c.target}${c.area ? ' · ' + c.area : ''} · ${status}`));
+        if (c.status === 'active') {
+          const actions = el('div', 'card-actions');
+          for (const [result, label] of [['met', 'Done ✓'], ['partial', 'Partly'], ['missed', 'Missed']]) {
+            const b = el('button', result === 'met' ? 'primary' : null, label);
+            b.onclick = () => resolve(c.id, result);
+            actions.appendChild(b);
+          }
+          card.appendChild(actions);
+        }
+        list.appendChild(card);
+      }
+
+      const areas = document.getElementById('areaList');
+      areas.innerHTML = '';
+      if (!p.areas.length) areas.appendChild(el('p', 'empty', 'No areas yet. Send Maple a photo of a room to plan one.'));
+      for (const a of p.areas) {
+        const card = el('div', 'card');
+        card.appendChild(el('div', null, `${a.status === 'done' ? '✅ ' : ''}${a.name}`));
+        card.appendChild(el('div', 'meta', a.goal));
+        const bar = el('div', 'bar');
+        const fill = el('span');
+        fill.style.width = `${a.progress}%`;
+        bar.appendChild(fill);
+        card.appendChild(bar);
+        const late = a.status === 'active' && new Date(a.due) < Date.now();
+        card.appendChild(el('div', late ? 'meta late' : 'meta',
+          a.status === 'done' ? 'Finished' : `${a.progress}% · clutter ${a.rating} → ${a.targetRating} · ${dueText(a.due)}`));
+        areas.appendChild(card);
+      }
+    }
+
+    function celebrate(data) {
+      if (data.progress) { progress = data.progress; renderBoard(); }
+      const lines = [data.action, data.levelUp].filter(Boolean);
+      if (lines.length) toast(lines.join('  '));
+    }
+
+    async function resolve(id, result) {
+      try {
+        const res = await api(`/api/challenges/${id}`, { method: 'POST', body: JSON.stringify({ result }) });
+        celebrate(await res.json());
+      } catch (e) {
+        if (e.message !== 'passcode') toast("Couldn't update that just now. Try again in a minute.");
       }
     }
 
@@ -500,11 +648,14 @@
       try {
         const res = await api('/api/state');
         const state = await res.json();
-        wins = state.wins;
-        renderWins();
+        progress = state.progress;
+        renderBoard();
         chat.innerHTML = '';
         if (!state.messages.length) return showWelcome();
-        for (const m of state.messages) addMessage(m.role, m.text, { hadPhoto: m.hadPhoto });
+        for (const m of state.messages) {
+          addMessage(m.role, m.text, { hadPhoto: m.hadPhoto, photos: m.photos });
+          for (const a of m.actions || []) addAction(a);
+        }
       } catch (e) {
         if (e.message === 'passcode') return;
         chat.innerHTML = '';
@@ -519,26 +670,27 @@
 
     async function send() {
       const text = input.value.trim();
-      if (busy || (!text && !pendingImage)) return;
+      if (busy || (!text && !pendingImages.length)) return;
       busy = true;
       sendBtn.disabled = true;
 
       if (chat.querySelector('.welcome')) chat.innerHTML = '';
-      const sentImage = pendingImage;
-      addMessage('user', text || 'Here is a photo.', { imageUrl: sentImage?.url });
-      const image = sentImage ? { media_type: sentImage.media_type, data: sentImage.data } : null;
+      const sentImages = pendingImages;
+      addMessage('user', text || (sentImages.length > 1 ? 'Here are some photos.' : 'Here is a photo.'), { imageUrls: sentImages.map((i) => i.url) });
+      const images = sentImages.map((i) => ({ media_type: i.media_type, data: i.data }));
       input.value = '';
       autosize();
       clearPhoto();
-      if (text === TIMER_STARTER) startTimer();
+      if (TIMER_STARTER.endsWith(text)) startTimer();
 
-      const body = addMessage('assistant', '');
+      let body = addMessage('assistant', '');
       body.innerHTML = '<span class="thinking">Maple is thinking...</span>';
       body.parentElement.setAttribute('aria-busy', 'true');
       let reply = '';
       let failed = false;
+      let textBefore = false;
       try {
-        const res = await api('/api/chat', { method: 'POST', body: JSON.stringify({ text, image }) });
+        const res = await api('/api/chat', { method: 'POST', body: JSON.stringify({ text, images }) });
         const reader = res.body.getReader();
         const decoder = new TextDecoder();
         let buffer = '';
@@ -551,14 +703,29 @@
           for (const raw of events) {
             if (!raw.startsWith('data: ')) continue;
             const event = JSON.parse(raw.slice(6));
-            if (event.type === 'text') reply += event.text;
+            if (event.type === 'action') {
+              // Saved items show as small chips; later text continues in a fresh bubble below them
+              // Text before a save stays in its bubble; text after it starts a new bubble below the chips
+              if (reply) { announcer.textContent = 'Maple said: ' + body.textContent; textBefore = true; body = null; reply = ''; }
+              else if (body && !textBefore) { body.parentElement.remove(); body = null; }
+              addAction(event.text);
+              toast(event.text);
+              continue;
+            }
+            if (event.type === 'progress') { progress = event.progress; renderBoard(); continue; }
+            if (event.type === 'text') {
+              if (!body) body = addMessage('assistant', '');
+              reply += event.text;
+            }
             if (event.type === 'replace') reply = event.text;
             if (event.type === 'error') { reply = event.text; failed = true; }
-            if (reply) body.innerHTML = format(reply);
+            if (reply && !body) body = addMessage('assistant', '');
+            if (reply) body.innerHTML = format(reply.replace(/^\s+/, ''));
             scrollDown();
           }
         }
-        if (!reply) failed = true;
+        if (!reply && !textBefore && (!body || !body.textContent)) failed = true;
+        if (body && !body.textContent && !failed) { body.parentElement.remove(); body = null; }
       } catch (e) {
         failed = true;
         if (e.message !== 'passcode') {
@@ -566,15 +733,16 @@
             ' Your words are back in the box below so you can send them again.';
         }
       }
-      body.parentElement.removeAttribute('aria-busy');
+      if (failed && !body) body = addMessage('assistant', '');
+      body?.parentElement.removeAttribute('aria-busy');
       if (failed) {
         body.innerHTML = format(reply || "Something got interrupted. Your words are back in the box below.");
         // Put her message back so nothing she wrote is lost
         if (text && !input.value) { input.value = text; autosize(); }
-        if (sentImage && !pendingImage) setPhoto(sentImage);
+        if (sentImages.length && !pendingImages.length) setPhotos(sentImages);
         scrollDown(true);
       }
-      announcer.textContent = 'Maple said: ' + body.textContent;
+      if (body) announcer.textContent = 'Maple said: ' + body.textContent;
       busy = false;
       sendBtn.disabled = false;
     }
@@ -598,13 +766,20 @@
       });
     }
 
-    function setPhoto(photo) {
-      pendingImage = photo;
-      previewImg.src = photo.url;
-      preview.style.display = 'flex';
+    function setPhotos(photos) {
+      pendingImages = photos.slice(0, MAX_PHOTOS);
+      const thumbs = document.getElementById('thumbs');
+      thumbs.innerHTML = '';
+      for (const photo of pendingImages) {
+        const img = document.createElement('img');
+        img.src = photo.url;
+        img.alt = 'Photo you are about to send';
+        thumbs.appendChild(img);
+      }
+      preview.style.display = pendingImages.length ? 'flex' : 'none';
     }
     function clearPhoto() {
-      pendingImage = null;
+      pendingImages = [];
       preview.style.display = 'none';
       photoInput.value = '';
     }
@@ -616,14 +791,17 @@
 
     document.getElementById('photoBtn').onclick = () => photoInput.click();
     photoInput.onchange = async () => {
-      const file = photoInput.files[0];
-      if (!file) return;
+      const files = [...photoInput.files];
+      photoInput.value = '';
+      if (!files.length) return;
+      const room = MAX_PHOTOS - pendingImages.length;
+      if (files.length > room) toast(`Up to ${MAX_PHOTOS} photos at a time. Kept the first ${Math.max(room, 0)}.`);
       try {
-        setPhoto(await resizeImage(file));
+        const added = await Promise.all(files.slice(0, Math.max(room, 0)).map(resizeImage));
+        setPhotos([...pendingImages, ...added]);
         input.focus();
       } catch {
-        clearPhoto();
-        toast("That photo didn't open. Try another one, or take a new one.");
+        toast("A photo didn't open. Try another one, or take a new one.");
       }
     };
     document.getElementById('removePhoto').onclick = clearPhoto;
@@ -644,11 +822,10 @@
       if (!text) return;
       try {
         const res = await api('/api/wins', { method: 'POST', body: JSON.stringify({ text }) });
-        wins = (await res.json()).wins;
-        renderWins();
+        const data = await res.json();
         document.getElementById('winText').value = '';
         winDialog.close();
-        toast(`🌱 Saved: ${text}. That counts.`);
+        celebrate({ ...data, action: `🌱 ${text} (+5)` });
       } catch (e) {
         if (e.message !== 'passcode') toast("Couldn't save that just now. Try again in a minute.");
       }
@@ -677,11 +854,11 @@
     });
     passDialog.addEventListener('cancel', (e) => e.preventDefault()); // nothing works without it
 
-    // Gentle 15-minute timer. Only a reminder, never a deadline.
+    // Sprint timer. When it ends, the typing box is ready for the report.
     const timerBox = document.getElementById('timer');
     const timerText = document.getElementById('timerText');
     function startTimer() {
-      store('maple-timer-end', String(Date.now() + 15 * 60 * 1000));
+      store('maple-timer-end', String(Date.now() + SPRINT_MINUTES * 60 * 1000));
       tickTimer();
     }
     function stopTimer() {
@@ -694,15 +871,16 @@
       const left = end - Date.now();
       if (left <= 0) {
         stopTimer();
-        toast('15 minutes are up. You can stop here. That was real work.');
+        toast('⏱ Sprint done! Tell Maple what went out.');
+        if (!input.value) { input.value = 'Sprint done! Here is what went out: '; autosize(); }
         return;
       }
       const min = Math.ceil(left / 60000);
-      timerText.textContent = `⏳ ${min} min left. Stop anytime.`;
+      timerText.textContent = `⏱ ${min} min left in your sprint`;
       timerBox.style.display = 'flex';
     }
     document.getElementById('timerStop').onclick = stopTimer;
-    setInterval(tickTimer, 15000);
+    setInterval(() => { tickTimer(); renderBoard(); }, 15000);
     tickTimer();
 
     // iOS: keep the header and typing box visible when the keyboard opens

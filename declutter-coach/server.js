@@ -6,6 +6,7 @@ import { fileURLToPath } from 'url';
 import dotenv from 'dotenv';
 import Anthropic from '@anthropic-ai/sdk';
 import { SYSTEM_PROMPT } from './prompt.js';
+import { TOOLS, contextBlock, emptyProgress, resolveChallenge, runTool, score, summary } from './progress.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 dotenv.config({ path: path.join(here, '.env') });
@@ -14,6 +15,8 @@ const PORT = process.env.PORT || 3456;
 const PASSCODE = process.env.APP_PASSCODE || '';
 const MODEL = 'claude-opus-5-5';
 const HISTORY_TURNS = 40; // most recent messages sent to the model each turn
+const MAX_TOOL_ROUNDS = 6; // tool calls Maple can chain in one reply
+const MAX_PHOTOS = 4;
 
 // Without a passcode, anyone who finds the URL can read the chats and spend the API key
 if (PASSCODE.length < 8) {
@@ -23,7 +26,8 @@ if (PASSCODE.length < 8) {
 
 const DATA_DIR = process.env.DATA_DIR || path.join(here, 'data');
 const CONVO_FILE = path.join(DATA_DIR, 'conversation.json');
-const WINS_FILE = path.join(DATA_DIR, 'wins.json');
+const WINS_FILE = path.join(DATA_DIR, 'wins.json'); // older installs; folded into progress.json
+const PROGRESS_FILE = path.join(DATA_DIR, 'progress.json');
 fs.mkdirSync(DATA_DIR, { recursive: true });
 
 const client = new Anthropic();
@@ -51,6 +55,15 @@ function readJson(file, fallback) {
 function writeJson(file, value) {
   fs.writeFileSync(`${file}.tmp`, JSON.stringify(value, null, 2));
   fs.renameSync(`${file}.tmp`, file);
+}
+
+// Progress board, created on first use. Wins from older installs carry over.
+function readProgress() {
+  const progress = readJson(PROGRESS_FILE, null);
+  if (progress) return progress;
+  const fresh = emptyProgress();
+  for (const w of readJson(WINS_FILE, [])) fresh.log.push({ at: w.at, kind: 'win', count: 1, route: null, area: null, note: w.text });
+  return fresh;
 }
 
 const digest = (value) => crypto.createHash('sha256').update(String(value)).digest();
@@ -81,7 +94,7 @@ app.use(express.static(path.join(here, 'public')));
 app.get('/api/state', (req, res) => {
   res.json({
     messages: readJson(CONVO_FILE, []),
-    wins: readJson(WINS_FILE, []),
+    progress: summary(readProgress()),
     needsPasscode: Boolean(PASSCODE)
   });
 });
@@ -89,10 +102,23 @@ app.get('/api/state', (req, res) => {
 app.post('/api/wins', (req, res) => {
   const text = String(req.body?.text || '').trim().slice(0, 300);
   if (!text) return res.status(400).json({ error: 'Win text is required' });
-  const wins = readJson(WINS_FILE, []);
-  wins.push({ text, at: new Date().toISOString() });
-  writeJson(WINS_FILE, wins);
-  res.json({ wins });
+  const progress = readProgress();
+  const before = score(progress).level;
+  progress.log.push({ at: new Date().toISOString(), kind: 'win', count: 1, route: null, area: null, note: text });
+  writeJson(PROGRESS_FILE, progress);
+  const after = score(progress).level;
+  res.json({ progress: summary(progress), levelUp: after !== before ? `🌳 Level up: ${after}!` : null });
+});
+
+// Jessica can mark a challenge met, partial, or missed from her progress board
+app.post('/api/challenges/:id', (req, res) => {
+  const progress = readProgress();
+  const before = score(progress).level;
+  const outcome = resolveChallenge(progress, req.params.id, req.body?.result, 'Marked in the app');
+  if (outcome.error) return res.status(400).json({ error: "That challenge couldn't be updated." });
+  writeJson(PROGRESS_FILE, progress);
+  const after = score(progress).level;
+  res.json({ progress: summary(progress), action: outcome.action, levelUp: after !== before ? `🌳 Level up: ${after}!` : null });
 });
 
 // Starts a fresh conversation; wins are kept and the old chat is archived, never deleted
@@ -116,7 +142,7 @@ function toApiMessages(history) {
   while (recent.length && recent[0].role !== 'user') recent = recent.slice(1);
   const messages = recent.map((m) => ({
     role: m.role,
-    content: [{ type: 'text', text: m.hadPhoto ? `[shared a photo]\n${m.text}` : m.text }]
+    content: [{ type: 'text', text: m.hadPhoto ? `[shared ${m.photos > 1 ? `${m.photos} photos` : 'a photo'}]\n${m.text}` : m.text }]
   }));
   // Cache the conversation so far; only the new turn is billed at full price
   if (messages.length) messages.at(-1).content[0].cache_control = { type: 'ephemeral' };
@@ -126,40 +152,32 @@ function toApiMessages(history) {
 const IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
 let chatInFlight = false;
 
-function contextBlock(wins) {
-  const today = new Date().toLocaleDateString('en-US', {
-    weekday: 'long', month: 'long', day: 'numeric', year: 'numeric'
-  });
-  const recent = wins.slice(-10).map((w) => `- ${w.at.slice(0, 10)}: ${w.text}`).join('\n');
-  return `Today is ${today}.\n\nJessica has logged ${wins.length} win(s) so far.` +
-    (recent ? ` Most recent:\n${recent}\nCelebrate progress when it fits.` : '');
-}
+const validImage = (image) => image && IMAGE_TYPES.includes(image.media_type) && typeof image.data === 'string' &&
+  image.data.length <= 6_000_000 && /^[A-Za-z0-9+/]+=*$/.test(image.data);
 
 app.post('/api/chat', async (req, res) => {
   const text = String(req.body?.text || '').trim();
-  const image = req.body?.image; // { media_type, data } base64, optional
-  if (!text && !image) return res.status(400).json({ error: 'Message is required' });
+  // Up to 4 photos as [{ media_type, data }] base64; a single "image" from older pages still works
+  const images = Array.isArray(req.body?.images) ? req.body.images : req.body?.image ? [req.body.image] : [];
+  if (!text && !images.length) return res.status(400).json({ error: 'Message is required' });
   if (text.length > 8000) return res.status(400).json({ error: 'Message is too long' });
-  if (image && (!IMAGE_TYPES.includes(image.media_type) || typeof image.data !== 'string' ||
-      image.data.length > 6_000_000 || !/^[A-Za-z0-9+/]+=*$/.test(image.data))) {
-    return res.status(400).json({ error: 'That photo could not be used. Try another one.' });
-  }
+  if (images.length > MAX_PHOTOS) return res.status(400).json({ error: `Up to ${MAX_PHOTOS} photos at a time, please.` });
+  if (!images.every(validImage)) return res.status(400).json({ error: 'That photo could not be used. Try another one.' });
   // One reply at a time: protects conversation.json and caps spend
   if (chatInFlight) return res.status(429).json({ error: 'Maple is still answering. One moment.' });
   chatInFlight = true;
 
   const history = readJson(CONVO_FILE, []);
-  const wins = readJson(WINS_FILE, []);
-  const userText = text || 'Here is a photo.';
+  const progress = readProgress();
+  const userText = text || (images.length > 1 ? 'Here are some photos.' : 'Here is a photo.');
 
   const messages = toApiMessages(history);
-  const userContent = [];
-  if (image?.data && image?.media_type) {
-    userContent.push({
-      type: 'image',
-      source: { type: 'base64', media_type: image.media_type, data: image.data }
-    });
-  }
+  // Live board state rides on the new message, not the system prompt, so the cached prefix holds
+  const userContent = [{ type: 'text', text: `<app_context>\n${contextBlock(progress)}\n</app_context>` }];
+  userContent.push(...images.map((image) => ({
+    type: 'image',
+    source: { type: 'base64', media_type: image.media_type, data: image.data }
+  })));
   userContent.push({ type: 'text', text: userText });
   messages.push({ role: 'user', content: userContent });
 
@@ -172,29 +190,60 @@ app.post('/api/chat', async (req, res) => {
   const send = (event) => res.write(`data: ${JSON.stringify(event)}\n\n`);
 
   let reply = '';
+  const actions = [];
   try {
-    const stream = client.beta.messages.stream({
-      model: MODEL,
-      max_tokens: 16000,
-      output_config: { effort: 'medium' },
-      betas: ['server-side-fallback-2026-07-01'],
-      fallbacks: 'default',
-      system: [
-        { type: 'text', text: SYSTEM_PROMPT, cache_control: { type: 'ephemeral', ttl: '1h' } },
-        { type: 'text', text: contextBlock(wins) }
-      ],
-      messages
-    });
+    const system = [{ type: 'text', text: SYSTEM_PROMPT, cache_control: { type: 'ephemeral', ttl: '1h' } }];
+    let progressChanged = false;
 
-    for await (const event of stream) {
-      if (event.type === 'content_block_delta' && event.delta.type === 'text_delta') {
-        reply += event.delta.text;
-        send({ type: 'text', text: event.delta.text });
+    // Maple may save progress with tools, then keep talking; each round streams to the phone
+    for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
+      const stream = client.beta.messages.stream({
+        model: MODEL,
+        max_tokens: 16000,
+        output_config: { effort: 'medium' },
+        betas: ['server-side-fallback-2026-07-01'],
+        fallbacks: 'default',
+        tools: TOOLS,
+        system,
+        messages
+      });
+
+      let roundStarted = false;
+      for await (const event of stream) {
+        if (event.type === 'content_block_delta' && event.delta.type === 'text_delta') {
+          let piece = event.delta.text;
+          if (!roundStarted && reply && !reply.endsWith('\n')) piece = `\n\n${piece.trimStart()}`;
+          roundStarted = true;
+          reply += piece;
+          send({ type: 'text', text: piece });
+        }
       }
+
+      const final = await stream.finalMessage();
+      if (final.stop_reason === 'refusal') { reply = ''; break; }
+      if (final.stop_reason !== 'tool_use') break;
+
+      const results = [];
+      for (const block of final.content) {
+        if (block.type !== 'tool_use') continue;
+        const outcome = runTool(progress, block.name, block.input || {});
+        results.push({ type: 'tool_result', tool_use_id: block.id, content: outcome.result, is_error: Boolean(outcome.error) });
+        if (outcome.error) continue;
+        progressChanged = true;
+        for (const line of [outcome.action, outcome.levelUp].filter(Boolean)) {
+          actions.push(line);
+          send({ type: 'action', text: line });
+        }
+      }
+      messages.push({ role: 'assistant', content: final.content }, { role: 'user', content: results });
     }
 
-    const final = await stream.finalMessage();
-    if (final.stop_reason === 'refusal' || !reply) {
+    if (progressChanged) {
+      writeJson(PROGRESS_FILE, progress);
+      send({ type: 'progress', progress: summary(progress) });
+    }
+
+    if (!reply) {
       // Not saved: a declined turn left in history would be resent and declined again
       send({ type: 'replace', text: "I'm sorry, I couldn't respond to that one. Could you try saying it another way?" });
       send({ type: 'done' });
@@ -202,8 +251,8 @@ app.post('/api/chat', async (req, res) => {
     }
 
     history.push(
-      { role: 'user', text: userText, hadPhoto: Boolean(image?.data), at: new Date().toISOString() },
-      { role: 'assistant', text: reply, at: new Date().toISOString() }
+      { role: 'user', text: userText, hadPhoto: images.length > 0, photos: images.length, at: new Date().toISOString() },
+      { role: 'assistant', text: reply, actions, at: new Date().toISOString() }
     );
     writeJson(CONVO_FILE, history);
     send({ type: 'done' });
