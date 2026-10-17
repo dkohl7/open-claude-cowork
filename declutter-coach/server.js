@@ -14,6 +14,12 @@ const PASSCODE = process.env.APP_PASSCODE || '';
 const MODEL = 'claude-opus-5-5';
 const HISTORY_TURNS = 40; // most recent messages sent to the model each turn
 
+// Without a passcode, anyone who finds the URL can read the chats and spend the API key
+if (!PASSCODE) {
+  console.error('Set APP_PASSCODE in .env before starting. The chat is private.');
+  process.exit(1);
+}
+
 const DATA_DIR = path.join(here, 'data');
 const CONVO_FILE = path.join(DATA_DIR, 'conversation.json');
 const WINS_FILE = path.join(DATA_DIR, 'wins.json');
@@ -160,6 +166,5 @@ app.post('/api/chat', async (req, res) => {
 });
 
 app.listen(PORT, '0.0.0.0', () => {
-  console.log(`Declutter coach running at http://localhost:${PORT}`);
-  console.log('On your phone (same Wi-Fi), use this computer\'s local IP address with that port.');
+  console.log(`Declutter coach running on port ${PORT}`);
 });
