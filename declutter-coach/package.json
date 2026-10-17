@@ -5,6 +5,9 @@
   "type": "module",
   "description": "A private, supportive AI coach to help let go of belongings and reclaim the house",
   "main": "server.js",
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
     "start": "node server.js"
   },

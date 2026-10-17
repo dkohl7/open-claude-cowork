@@ -1,5 +1,6 @@
 import express from 'express';
 import fs from 'fs';
+import crypto from 'crypto';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import dotenv from 'dotenv';
@@ -15,39 +16,65 @@ const MODEL = 'claude-opus-5-5';
 const HISTORY_TURNS = 40; // most recent messages sent to the model each turn
 
 // Without a passcode, anyone who finds the URL can read the chats and spend the API key
-if (!PASSCODE) {
-  console.error('Set APP_PASSCODE in .env before starting. The chat is private.');
+if (PASSCODE.length < 8) {
+  console.error('Set APP_PASSCODE (8+ characters) in .env before starting. The chat is private.');
   process.exit(1);
 }
 
-const DATA_DIR = path.join(here, 'data');
+const DATA_DIR = process.env.DATA_DIR || path.join(here, 'data');
 const CONVO_FILE = path.join(DATA_DIR, 'conversation.json');
 const WINS_FILE = path.join(DATA_DIR, 'wins.json');
 fs.mkdirSync(DATA_DIR, { recursive: true });
 
 const client = new Anthropic();
 const app = express();
-app.use(express.json({ limit: '15mb' }));
-
-function readJson(file, fallback) {
-  try {
-    return JSON.parse(fs.readFileSync(file, 'utf8'));
-  } catch {
-    return fallback;
-  }
-}
-
-function writeJson(file, value) {
-  fs.writeFileSync(file, JSON.stringify(value, null, 2));
-}
-
-// Simple passcode gate so only Jessica can open the app on the home network
-app.use('/api', (req, res, next) => {
-  if (PASSCODE && req.get('x-passcode') !== PASSCODE) {
-    return res.status(401).json({ error: 'Passcode required' });
-  }
+app.disable('x-powered-by');
+app.set('trust proxy', process.env.TRUST_PROXY === '1' ? 1 : false);
+app.use((req, res, next) => {
+  res.set({ 'X-Content-Type-Options': 'nosniff', 'X-Frame-Options': 'DENY', 'Referrer-Policy': 'no-referrer' });
   next();
 });
+app.get('/healthz', (req, res) => res.send('ok'));
+
+function readJson(file, fallback) {
+  let raw;
+  try {
+    raw = fs.readFileSync(file, 'utf8');
+  } catch (error) {
+    if (error.code === 'ENOENT') return fallback;
+    throw error;
+  }
+  return JSON.parse(raw); // a corrupt file fails loudly instead of being overwritten with []
+}
+
+// Write to a temp file and rename, so a crash mid-write never leaves half a file
+function writeJson(file, value) {
+  fs.writeFileSync(`${file}.tmp`, JSON.stringify(value, null, 2));
+  fs.renameSync(`${file}.tmp`, file);
+}
+
+const digest = (value) => crypto.createHash('sha256').update(String(value)).digest();
+const PASSCODE_DIGEST = digest(PASSCODE);
+const failures = new Map(); // ip -> { count, until }
+
+// Passcode gate: constant-time compare, and 10 wrong tries locks that address out for 15 minutes
+app.use('/api', (req, res, next) => {
+  const now = Date.now();
+  const entry = failures.get(req.ip);
+  if (entry && entry.until > now) {
+    return res.status(429).json({ error: 'Too many tries. Wait 15 minutes.' });
+  }
+  if (!crypto.timingSafeEqual(digest(req.get('x-passcode') || ''), PASSCODE_DIGEST)) {
+    const count = (entry?.count || 0) + 1;
+    failures.set(req.ip, { count: count >= 10 ? 0 : count, until: count >= 10 ? now + 15 * 60_000 : 0 });
+    return res.status(401).json({ error: 'Passcode required' });
+  }
+  failures.delete(req.ip);
+  next();
+});
+
+// Parse bodies only after the passcode check; a resized phone photo is well under 1 MB
+app.use(express.json({ limit: '8mb' }));
 
 app.use(express.static(path.join(here, 'public')));
 
@@ -60,7 +87,7 @@ app.get('/api/state', (req, res) => {
 });
 
 app.post('/api/wins', (req, res) => {
-  const text = String(req.body?.text || '').trim();
+  const text = String(req.body?.text || '').trim().slice(0, 300);
   if (!text) return res.status(400).json({ error: 'Win text is required' });
   const wins = readJson(WINS_FILE, []);
   wins.push({ text, at: new Date().toISOString() });
@@ -74,15 +101,23 @@ app.post('/api/reset', (req, res) => {
   res.json({ ok: true });
 });
 
-// Turns stored history into API messages: text only, starting on a user turn
+// Turns stored history into API messages: text only, starting on a user turn.
+// The window start moves in steps of 10 so the cached prefix survives several turns.
 function toApiMessages(history) {
-  let recent = history.slice(-HISTORY_TURNS);
+  const start = Math.floor(Math.max(0, history.length - HISTORY_TURNS) / 10) * 10;
+  let recent = history.slice(start).filter((m) => m.text);
   while (recent.length && recent[0].role !== 'user') recent = recent.slice(1);
-  return recent.map((m) => ({
+  const messages = recent.map((m) => ({
     role: m.role,
-    content: m.hadPhoto ? `[shared a photo]\n${m.text}` : m.text
+    content: [{ type: 'text', text: m.hadPhoto ? `[shared a photo]\n${m.text}` : m.text }]
   }));
+  // Cache the conversation so far; only the new turn is billed at full price
+  if (messages.length) messages.at(-1).content[0].cache_control = { type: 'ephemeral' };
+  return messages;
 }
+
+const IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
+let chatInFlight = false;
 
 function contextBlock(wins) {
   const today = new Date().toLocaleDateString('en-US', {
@@ -97,6 +132,14 @@ app.post('/api/chat', async (req, res) => {
   const text = String(req.body?.text || '').trim();
   const image = req.body?.image; // { media_type, data } base64, optional
   if (!text && !image) return res.status(400).json({ error: 'Message is required' });
+  if (text.length > 8000) return res.status(400).json({ error: 'Message is too long' });
+  if (image && (!IMAGE_TYPES.includes(image.media_type) || typeof image.data !== 'string' ||
+      image.data.length > 6_000_000 || !/^[A-Za-z0-9+/]+=*$/.test(image.data))) {
+    return res.status(400).json({ error: 'That photo could not be used. Try another one.' });
+  }
+  // One reply at a time: protects conversation.json and caps spend
+  if (chatInFlight) return res.status(429).json({ error: 'Maple is still answering. One moment.' });
+  chatInFlight = true;
 
   const history = readJson(CONVO_FILE, []);
   const wins = readJson(WINS_FILE, []);
@@ -116,6 +159,9 @@ app.post('/api/chat', async (req, res) => {
   res.setHeader('Content-Type', 'text/event-stream');
   res.setHeader('Cache-Control', 'no-cache');
   res.setHeader('Connection', 'keep-alive');
+  res.setHeader('X-Accel-Buffering', 'no');
+  res.flushHeaders();
+  const ping = setInterval(() => res.write(': ping\n\n'), 15000); // keeps proxies from closing during thinking
   const send = (event) => res.write(`data: ${JSON.stringify(event)}\n\n`);
 
   let reply = '';
@@ -141,9 +187,11 @@ app.post('/api/chat', async (req, res) => {
     }
 
     const final = await stream.finalMessage();
-    if (final.stop_reason === 'refusal') {
-      reply = "I'm sorry, I couldn't respond to that one. Could you try saying it another way?";
-      send({ type: 'replace', text: reply });
+    if (final.stop_reason === 'refusal' || !reply) {
+      // Not saved: a declined turn left in history would be resent and declined again
+      send({ type: 'replace', text: "I'm sorry, I couldn't respond to that one. Could you try saying it another way?" });
+      send({ type: 'done' });
+      return;
     }
 
     history.push(
@@ -161,10 +209,20 @@ app.post('/api/chat', async (req, res) => {
       message = 'Too many messages at once. Give it a minute and try again.';
     }
     send({ type: 'error', text: message });
+  } finally {
+    clearInterval(ping);
+    chatInFlight = false;
+    res.end();
   }
-  res.end();
 });
 
-app.listen(PORT, '0.0.0.0', () => {
+// JSON errors (e.g. 413) without stack traces or file paths
+app.use((error, req, res, next) => {
+  console.error('[HTTP]', error.message);
+  res.status(error.status || 500).json({ error: error.status === 413 ? 'That photo is too large.' : 'Something went wrong.' });
+});
+
+const server = app.listen(PORT, '0.0.0.0', () => {
   console.log(`Declutter coach running on port ${PORT}`);
 });
+process.on('SIGTERM', () => server.close(() => process.exit(0)));

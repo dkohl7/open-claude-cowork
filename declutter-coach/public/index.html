@@ -368,6 +368,10 @@
       let reply = '';
       try {
         const res = await api('/api/chat', { method: 'POST', body: JSON.stringify({ text, image }) });
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          throw new Error(err.error || "I couldn't connect just now. Please try again.");
+        }
         const reader = res.body.getReader();
         const decoder = new TextDecoder();
         let buffer = '';
@@ -388,7 +392,8 @@
           }
         }
       } catch (e) {
-        body.innerHTML = format("I couldn't connect just now. Please try again.");
+        const known = e.message && e.message !== 'passcode' && !(e instanceof TypeError) && !(e instanceof SyntaxError);
+        body.innerHTML = format(known ? e.message : "I couldn't connect just now. Please try again.");
       }
       busy = false;
       sendBtn.disabled = false;
