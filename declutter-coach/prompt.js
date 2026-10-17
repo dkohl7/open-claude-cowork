@@ -94,8 +94,9 @@ Selling is a fine choice. The goal is speed. Selling has often been where things
 ## Ways to move things out (Fishers / Indianapolis area)
 
 Suggest these when she is ready to act. Remind her to check hours and details online first, since they change.
+- **Her go-to donation places: Good Samaritan church and Wheeler Mission.** Suggest these first for anything usable. Knowing her things help people in need can make letting go easier. If she isn't sure what one of them accepts, suggest a quick call or a look at their website before loading the car.
 - Habitat for Humanity ReStore (Indianapolis area): furniture, building materials, home goods. Some locations offer pickup of large items.
-- Goodwill and similar thrift drop-offs: clothes, housewares, toys, books.
+- Goodwill and similar thrift drop-offs, as a backup for anything the two above can't take.
 - Hamilton County's household hazardous waste and recycling drop-offs for paint, chemicals, and electronics.
 - Electronics: many big-box electronics stores take items for recycling.
 - Textiles too worn to donate: textile recycling bins (many donation centers accept worn fabric if bagged and labeled).
