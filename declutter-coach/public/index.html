@@ -1,0 +1,475 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#f6f1ea">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <title>Maple</title>
+  <style>
+    :root {
+      --bg: #f6f1ea;
+      --panel: #fffdf9;
+      --ink: #2f2a24;
+      --muted: #7a7065;
+      --accent: #b5562b;
+      --accent-soft: #f3dfd2;
+      --coach: #fffdf9;
+      --me: #dce8dc;
+      --line: #e6ddd1;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #1f1c19;
+        --panel: #2a2622;
+        --ink: #efe8df;
+        --muted: #a89d90;
+        --accent: #e08a5c;
+        --accent-soft: #3d2c22;
+        --coach: #2a2622;
+        --me: #2e3a2f;
+        --line: #3a342e;
+      }
+    }
+    * { box-sizing: border-box; }
+    html, body { height: 100%; margin: 0; }
+    body {
+      background: var(--bg);
+      color: var(--ink);
+      font: 17px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      display: flex;
+      flex-direction: column;
+    }
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: calc(env(safe-area-inset-top) + 12px) 16px 12px;
+      border-bottom: 1px solid var(--line);
+      background: var(--panel);
+    }
+    header h1 { font-size: 20px; margin: 0; }
+    header p { margin: 0; font-size: 13px; color: var(--muted); }
+    .header-actions { display: flex; gap: 8px; }
+    button {
+      font: inherit;
+      border: 0;
+      border-radius: 999px;
+      cursor: pointer;
+    }
+    .pill {
+      background: var(--accent-soft);
+      color: var(--accent);
+      padding: 6px 12px;
+      font-size: 14px;
+      font-weight: 600;
+    }
+    .ghost {
+      background: transparent;
+      color: var(--muted);
+      padding: 6px 8px;
+      font-size: 14px;
+    }
+    main {
+      flex: 1;
+      overflow-y: auto;
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .msg {
+      max-width: 85%;
+      padding: 10px 14px;
+      border-radius: 18px;
+      white-space: pre-wrap;
+      word-wrap: break-word;
+    }
+    .coach {
+      align-self: flex-start;
+      background: var(--coach);
+      border: 1px solid var(--line);
+      border-bottom-left-radius: 6px;
+    }
+    .me {
+      align-self: flex-end;
+      background: var(--me);
+      border-bottom-right-radius: 6px;
+    }
+    .msg img { display: block; max-width: 100%; border-radius: 12px; margin-bottom: 6px; }
+    .photo-note { font-size: 13px; color: var(--muted); }
+    .error { color: var(--accent); font-size: 14px; align-self: center; }
+    .welcome { text-align: center; color: var(--muted); margin: 24px 8px 8px; }
+    .welcome h2 { color: var(--ink); font-size: 22px; margin: 0 0 6px; }
+    .starters {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      justify-content: center;
+      margin-top: 12px;
+    }
+    .starter {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      color: var(--ink);
+      padding: 10px 14px;
+      font-size: 15px;
+    }
+    footer {
+      padding: 10px 12px calc(env(safe-area-inset-bottom) + 10px);
+      border-top: 1px solid var(--line);
+      background: var(--panel);
+    }
+    .preview {
+      display: none;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 8px;
+      font-size: 14px;
+      color: var(--muted);
+    }
+    .preview img { width: 48px; height: 48px; object-fit: cover; border-radius: 8px; }
+    .composer { display: flex; gap: 8px; align-items: flex-end; }
+    textarea {
+      flex: 1;
+      min-width: 0;
+      resize: none;
+      max-height: 140px;
+      border: 1px solid var(--line);
+      border-radius: 20px;
+      padding: 10px 14px;
+      font: inherit;
+      background: var(--bg);
+      color: var(--ink);
+    }
+    .icon-btn {
+      width: 44px;
+      height: 44px;
+      flex: none;
+      display: grid;
+      place-items: center;
+      background: var(--accent-soft);
+      color: var(--accent);
+      font-size: 20px;
+    }
+    .send { background: var(--accent); color: #fff; }
+    .send:disabled { opacity: 0.5; }
+    dialog {
+      border: 0;
+      border-radius: 20px;
+      padding: 20px;
+      width: min(92vw, 420px);
+      background: var(--panel);
+      color: var(--ink);
+    }
+    dialog::backdrop { background: rgba(0, 0, 0, 0.4); }
+    dialog h3 { margin: 0 0 8px; }
+    dialog input {
+      width: 100%;
+      font: inherit;
+      padding: 10px 12px;
+      border-radius: 12px;
+      border: 1px solid var(--line);
+      background: var(--bg);
+      color: var(--ink);
+      margin: 8px 0 12px;
+    }
+    .dialog-actions { display: flex; justify-content: flex-end; gap: 8px; }
+    .primary { background: var(--accent); color: #fff; padding: 8px 16px; }
+    .wins-list { max-height: 40vh; overflow-y: auto; padding-left: 18px; color: var(--muted); font-size: 15px; }
+    .quick-wins { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 4px; }
+    .quick-wins button { background: var(--bg); border: 1px solid var(--line); color: var(--ink); padding: 6px 10px; font-size: 14px; }
+  </style>
+</head>
+<body>
+  <header>
+    <div>
+      <h1>Maple</h1>
+      <p>Your decluttering coach</p>
+    </div>
+    <div class="header-actions">
+      <button class="pill" id="winsBtn">🌱 0 wins</button>
+      <button class="ghost" id="newBtn" title="Start a fresh conversation">New</button>
+    </div>
+  </header>
+
+  <main id="chat"></main>
+
+  <footer>
+    <div class="preview" id="preview">
+      <img id="previewImg" alt="">
+      <span>Photo attached</span>
+      <button class="ghost" id="removePhoto">Remove</button>
+    </div>
+    <div class="composer">
+      <button class="icon-btn" id="photoBtn" title="Share a photo" aria-label="Share a photo">📷</button>
+      <input type="file" id="photoInput" accept="image/*" hidden>
+      <textarea id="input" rows="1" placeholder="Talk to Maple..."></textarea>
+      <button class="icon-btn send" id="sendBtn" aria-label="Send">➤</button>
+    </div>
+  </footer>
+
+  <dialog id="winDialog">
+    <h3>Log a win 🌱</h3>
+    <p style="margin:0;color:var(--muted);font-size:15px">Every bag out the door counts.</p>
+    <div class="quick-wins" style="margin-top:12px">
+      <button data-win="Dropped off a donation bag">Donation bag</button>
+      <button data-win="Cleared a shelf">Cleared a shelf</button>
+      <button data-win="Did a 15-minute session">15 minutes</button>
+      <button data-win="Recycled a box of things">Recycled a box</button>
+    </div>
+    <input id="winText" placeholder="Or describe it in your words">
+    <ul class="wins-list" id="winsList"></ul>
+    <div class="dialog-actions">
+      <button class="ghost" id="winCancel">Close</button>
+      <button class="primary" id="winSave">Save win</button>
+    </div>
+  </dialog>
+
+  <dialog id="passDialog">
+    <h3>Welcome</h3>
+    <p style="margin:0;color:var(--muted);font-size:15px">Enter your passcode to open Maple.</p>
+    <input id="passInput" type="password" autocomplete="current-password">
+    <div class="dialog-actions">
+      <button class="primary" id="passSave">Open</button>
+    </div>
+  </dialog>
+
+  <script>
+    const chat = document.getElementById('chat');
+    const input = document.getElementById('input');
+    const sendBtn = document.getElementById('sendBtn');
+    const photoInput = document.getElementById('photoInput');
+    const preview = document.getElementById('preview');
+    const previewImg = document.getElementById('previewImg');
+    const winsBtn = document.getElementById('winsBtn');
+    const winDialog = document.getElementById('winDialog');
+    const passDialog = document.getElementById('passDialog');
+
+    const STARTERS = [
+      "Let's do a 15-minute session",
+      "I'm stuck on one item",
+      "Help me plan a donation run",
+      "I'm feeling overwhelmed today"
+    ];
+
+    let pendingImage = null;
+    let wins = [];
+    let busy = false;
+
+    function getPasscode() {
+      try { return localStorage.getItem('maple-passcode') || ''; } catch { return ''; }
+    }
+    function setPasscode(value) {
+      try { localStorage.setItem('maple-passcode', value); } catch {}
+    }
+
+    async function api(url, options = {}) {
+      const res = await fetch(url, {
+        ...options,
+        headers: { 'Content-Type': 'application/json', 'x-passcode': getPasscode(), ...(options.headers || {}) }
+      });
+      if (res.status === 401) {
+        passDialog.showModal();
+        throw new Error('passcode');
+      }
+      return res;
+    }
+
+    function escapeHtml(text) {
+      return text.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    }
+
+    // Light formatting: bold and italics only
+    function format(text) {
+      return escapeHtml(text)
+        .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+        .replace(/(^|[^*])\*(?!\s)(.+?)\*/g, '$1<em>$2</em>');
+    }
+
+    function addMessage(role, text, opts = {}) {
+      const el = document.createElement('div');
+      el.className = `msg ${role === 'user' ? 'me' : 'coach'}`;
+      if (opts.imageUrl) {
+        const img = document.createElement('img');
+        img.src = opts.imageUrl;
+        el.appendChild(img);
+      } else if (opts.hadPhoto) {
+        const note = document.createElement('div');
+        note.className = 'photo-note';
+        note.textContent = '📷 Photo shared';
+        el.appendChild(note);
+      }
+      const body = document.createElement('div');
+      body.innerHTML = format(text);
+      el.appendChild(body);
+      chat.appendChild(el);
+      chat.scrollTop = chat.scrollHeight;
+      return body;
+    }
+
+    function showWelcome() {
+      chat.innerHTML = `
+        <div class="welcome">
+          <h2>Hi Jessica 👋</h2>
+          <div>This is a calm, private space. No pressure, no judgment.<br>Where would you like to start?</div>
+          <div class="starters"></div>
+        </div>`;
+      const box = chat.querySelector('.starters');
+      for (const s of STARTERS) {
+        const b = document.createElement('button');
+        b.className = 'starter';
+        b.textContent = s;
+        b.onclick = () => { input.value = s; send(); };
+        box.appendChild(b);
+      }
+    }
+
+    function renderWins() {
+      winsBtn.textContent = `🌱 ${wins.length} win${wins.length === 1 ? '' : 's'}`;
+      const list = document.getElementById('winsList');
+      list.innerHTML = '';
+      for (const w of wins.slice(-8).reverse()) {
+        const li = document.createElement('li');
+        li.textContent = `${new Date(w.at).toLocaleDateString()}: ${w.text}`;
+        list.appendChild(li);
+      }
+    }
+
+    async function load() {
+      try {
+        const res = await api('/api/state');
+        const state = await res.json();
+        wins = state.wins;
+        renderWins();
+        chat.innerHTML = '';
+        if (!state.messages.length) return showWelcome();
+        for (const m of state.messages) addMessage(m.role, m.text, { hadPhoto: m.hadPhoto });
+      } catch (e) {
+        if (e.message !== 'passcode') console.error(e);
+      }
+    }
+
+    async function send() {
+      const text = input.value.trim();
+      if (busy || (!text && !pendingImage)) return;
+      busy = true;
+      sendBtn.disabled = true;
+
+      if (chat.querySelector('.welcome')) chat.innerHTML = '';
+      addMessage('user', text || 'Here is a photo.', { imageUrl: pendingImage?.url });
+      const image = pendingImage ? { media_type: pendingImage.media_type, data: pendingImage.data } : null;
+      input.value = '';
+      autosize();
+      clearPhoto();
+
+      const body = addMessage('assistant', '…');
+      let reply = '';
+      try {
+        const res = await api('/api/chat', { method: 'POST', body: JSON.stringify({ text, image }) });
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+        while (true) {
+          const { value, done } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+          const events = buffer.split('\n\n');
+          buffer = events.pop();
+          for (const raw of events) {
+            if (!raw.startsWith('data: ')) continue;
+            const event = JSON.parse(raw.slice(6));
+            if (event.type === 'text') reply += event.text;
+            if (event.type === 'replace') reply = event.text;
+            if (event.type === 'error') reply = event.text;
+            body.innerHTML = format(reply || '…');
+            chat.scrollTop = chat.scrollHeight;
+          }
+        }
+      } catch (e) {
+        body.innerHTML = format("I couldn't connect just now. Please try again.");
+      }
+      busy = false;
+      sendBtn.disabled = false;
+    }
+
+    // Shrinks photos before upload so they send quickly over Wi-Fi
+    function resizeImage(file) {
+      return new Promise((resolve, reject) => {
+        const img = new Image();
+        img.onload = () => {
+          const scale = Math.min(1, 1280 / Math.max(img.width, img.height));
+          const canvas = document.createElement('canvas');
+          canvas.width = Math.round(img.width * scale);
+          canvas.height = Math.round(img.height * scale);
+          canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+          const url = canvas.toDataURL('image/jpeg', 0.82);
+          URL.revokeObjectURL(img.src);
+          resolve({ url, media_type: 'image/jpeg', data: url.split(',')[1] });
+        };
+        img.onerror = reject;
+        img.src = URL.createObjectURL(file);
+      });
+    }
+
+    function clearPhoto() {
+      pendingImage = null;
+      preview.style.display = 'none';
+      photoInput.value = '';
+    }
+
+    function autosize() {
+      input.style.height = 'auto';
+      input.style.height = Math.min(input.scrollHeight, 140) + 'px';
+    }
+
+    document.getElementById('photoBtn').onclick = () => photoInput.click();
+    photoInput.onchange = async () => {
+      const file = photoInput.files[0];
+      if (!file) return;
+      pendingImage = await resizeImage(file);
+      previewImg.src = pendingImage.url;
+      preview.style.display = 'flex';
+    };
+    document.getElementById('removePhoto').onclick = clearPhoto;
+
+    sendBtn.onclick = send;
+    input.addEventListener('input', autosize);
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && !e.shiftKey && window.matchMedia('(pointer: fine)').matches) {
+        e.preventDefault();
+        send();
+      }
+    });
+
+    winsBtn.onclick = () => winDialog.showModal();
+    document.getElementById('winCancel').onclick = () => winDialog.close();
+    async function saveWin(text) {
+      if (!text) return;
+      const res = await api('/api/wins', { method: 'POST', body: JSON.stringify({ text }) });
+      wins = (await res.json()).wins;
+      renderWins();
+      document.getElementById('winText').value = '';
+      winDialog.close();
+      addMessage('assistant', `🌱 Win saved: ${text}. That's real progress.`);
+    }
+    document.getElementById('winSave').onclick = () => saveWin(document.getElementById('winText').value.trim());
+    for (const b of document.querySelectorAll('[data-win]')) b.onclick = () => saveWin(b.dataset.win);
+
+    document.getElementById('newBtn').onclick = async () => {
+      if (!confirm('Start a fresh conversation? Your wins are kept.')) return;
+      await api('/api/reset', { method: 'POST' });
+      showWelcome();
+    };
+
+    document.getElementById('passSave').onclick = () => {
+      setPasscode(document.getElementById('passInput').value);
+      passDialog.close();
+      load();
+    };
+
+    load();
+  </script>
+</body>
+</html>

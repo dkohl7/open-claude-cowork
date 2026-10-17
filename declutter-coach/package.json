@@ -1,0 +1,16 @@
+{
+  "name": "declutter-coach",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "A private, supportive AI coach to help let go of belongings and reclaim the house",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.135.0",
+    "dotenv": "^16.4.5",
+    "express": "^5.2.1"
+  }
+}
