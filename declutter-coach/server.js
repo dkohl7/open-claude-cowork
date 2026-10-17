@@ -62,7 +62,7 @@ app.use('/api', (req, res, next) => {
   const now = Date.now();
   const entry = failures.get(req.ip);
   if (entry && entry.until > now) {
-    return res.status(429).json({ error: 'Too many tries. Wait 15 minutes.' });
+    return res.status(429).json({ error: 'Too many tries for now. Please wait 15 minutes and try again.' });
   }
   if (!crypto.timingSafeEqual(digest(req.get('x-passcode') || ''), PASSCODE_DIGEST)) {
     const count = (entry?.count || 0) + 1;
@@ -95,8 +95,15 @@ app.post('/api/wins', (req, res) => {
   res.json({ wins });
 });
 
-// Starts a fresh conversation; wins are kept
+// Starts a fresh conversation; wins are kept and the old chat is archived, never deleted
 app.post('/api/reset', (req, res) => {
+  const history = readJson(CONVO_FILE, []);
+  if (history.length) {
+    const archiveDir = path.join(DATA_DIR, 'archive');
+    fs.mkdirSync(archiveDir, { recursive: true });
+    const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+    writeJson(path.join(archiveDir, `conversation-${stamp}.json`), history);
+  }
   writeJson(CONVO_FILE, []);
   res.json({ ok: true });
 });
@@ -202,11 +209,11 @@ app.post('/api/chat', async (req, res) => {
     send({ type: 'done' });
   } catch (error) {
     console.error('[CHAT] Error:', error);
-    let message = 'Something went wrong. Please try again in a moment.';
+    let message = 'Something got interrupted on my end. Please try again in a moment.';
     if (!process.env.ANTHROPIC_API_KEY || error instanceof Anthropic.AuthenticationError) {
-      message = 'The app is not set up with a valid API key yet.';
+      message = "Maple can't reply right now because of a setup problem on the computer. It's nothing you did.";
     } else if (error instanceof Anthropic.RateLimitError) {
-      message = 'Too many messages at once. Give it a minute and try again.';
+      message = 'Maple needs a short break. Try again in a minute.';
     }
     send({ type: 'error', text: message });
   } finally {
